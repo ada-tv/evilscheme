@@ -1,0 +1,15 @@
+[package]
+name = "evilscheme"
+version = "0.1.0"
+edition = "2024"
+license = "CC0-1.0"
+
+[[bin]]
+name = "evilscheme"
+path = "src/main.rs"
+
+[lib]
+name = "evilscheme"
+path = "src/lib.rs"
+
+[dependencies]
