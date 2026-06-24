@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{fmt::Display, iter::Peekable, num::ParseFloatError, str::Chars};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -33,7 +35,7 @@ impl std::fmt::Display for Atom {
             Self::List(list) => {
                 f.write_str("(")?;
 
-                if list.len() > 0 {
+                if !list.is_empty() {
                     for value in &list[..list.len() - 1] {
                         value.fmt(f)?;
                         f.write_str(" ")?;
@@ -50,7 +52,7 @@ impl std::fmt::Display for Atom {
             Self::Function(bindings, body) => {
                 f.write_str("(lambda (")?;
 
-                if bindings.len() > 0 {
+                if !bindings.is_empty() {
                     for value in &bindings[..bindings.len() - 1] {
                         value.fmt(f)?;
                         f.write_str(" ")?;
@@ -220,7 +222,7 @@ impl Atom {
             if state.peek() == Some(')') {
                 state.next();
                 break;
-            } else if state.peek() == None {
+            } else if state.peek().is_none() {
                 return Err(AtomParseError::EarlyEOF(start_loc));
             } else {
                 list.push(Self::parse_atom(state)?);
@@ -335,7 +337,7 @@ impl Atom {
             }
 
             // could either be a symbol or a negative number
-            Some(c) if c == '-' => {
+            Some('-') => {
                 state.next();
 
                 let Some(c) = state.peek() else {

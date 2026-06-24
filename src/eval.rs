@@ -1,10 +1,11 @@
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 
 use crate::Atom;
 
 pub type HostFunction = Box<dyn Fn(&[Atom]) -> Result<Atom, EvalError>>;
 
-#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum EvalError {
     UnboundVariable(String),
@@ -60,9 +61,9 @@ impl Evaluator {
 
     fn get_scoped_binding(&self, name: &str) -> Option<Atom> {
         for scope in self.bindings.iter().rev() {
-            let Some(var) = scope.get(name) else { continue };
-
-            return Some(var.clone());
+            if let Some(var) = scope.get(name) {
+                return Some(var.clone());
+            }
         }
 
         None
@@ -70,8 +71,8 @@ impl Evaluator {
 
     fn set_scoped_binding(&mut self, name: String, value: Atom) -> Result<(), EvalError> {
         for scope in self.bindings.iter_mut().rev() {
-            if scope.contains_key(&name) {
-                scope.insert(name, value);
+            if let Some(e) = scope.get_mut(&name) {
+                *e = value;
                 return Ok(());
             }
         }
@@ -80,8 +81,10 @@ impl Evaluator {
     }
 
     fn set_top_binding(&mut self, name: String, value: Atom) {
-        let len = self.bindings.len();
-        self.bindings[len - 1].insert(name, value);
+        self.bindings
+            .last_mut()
+            .expect("always at least one scope")
+            .insert(name, value);
     }
 
     fn push_scope(&mut self) {
@@ -93,7 +96,7 @@ impl Evaluator {
     }
 
     fn apply_number_op(args: &[Atom], op: fn(f64) -> f64) -> Result<Atom, EvalError> {
-        if args.len() == 0 {
+        if args.is_empty() {
             return Ok(Atom::Nil);
         }
 
@@ -131,7 +134,7 @@ impl Evaluator {
             }
 
             "-" => {
-                if args.len() < 1 {
+                if args.is_empty() {
                     return Err(EvalError::TypeMismatch("- requires at least one number"));
                 }
 
@@ -169,7 +172,7 @@ impl Evaluator {
             }
 
             "/" => {
-                if args.len() < 1 {
+                if args.is_empty() {
                     return Err(EvalError::TypeMismatch("/ requires at least one number"));
                 }
 
@@ -246,7 +249,7 @@ impl Evaluator {
             }
 
             "null?" => {
-                if args.len() < 1 {
+                if args.is_empty() {
                     return Err(EvalError::TypeMismatch(
                         "null? requires at least one argument",
                     ));
@@ -260,7 +263,7 @@ impl Evaluator {
             }
 
             "number?" => {
-                if args.len() < 1 {
+                if args.is_empty() {
                     return Err(EvalError::TypeMismatch(
                         "number? requires at least one argument",
                     ));
@@ -274,7 +277,7 @@ impl Evaluator {
             }
 
             "string?" => {
-                if args.len() < 1 {
+                if args.is_empty() {
                     return Err(EvalError::TypeMismatch(
                         "string? requires at least one argument",
                     ));
@@ -325,7 +328,7 @@ impl Evaluator {
             }
 
             "print" => {
-                if args.len() == 0 {
+                if args.is_empty() {
                     println!();
                     return Ok(Atom::Nil);
                 }
@@ -334,7 +337,7 @@ impl Evaluator {
                     print!("{} ", value);
                 }
 
-                println!("{}", args[args.len() - 1]);
+                println!("{}", args.last().expect("empty args is checked"));
 
                 Ok(Atom::Nil)
             }
@@ -461,7 +464,7 @@ impl Evaluator {
 
         match atom {
             // ()
-            Atom::List(x) if x.len() == 0 => Ok(Atom::Nil),
+            Atom::List(x) if x.is_empty() => Ok(Atom::Nil),
 
             // (set! symbol any)
             Atom::List(list) if list[0] == Atom::Symbol("set!".into()) => {
@@ -491,7 +494,7 @@ impl Evaluator {
 
                     Ok(Atom::Nil)
                 } else if let Atom::List(args) = &list[1] {
-                    let Some(Atom::Symbol(name)) = args.get(0) else {
+                    let Some(Atom::Symbol(name)) = args.first() else {
                         return Err(EvalError::SyntaxError("define binding must be symbol"));
                     };
 
@@ -721,7 +724,7 @@ impl Evaluator {
                     self.pop_scope();
 
                     result
-                } else if let Atom::HostFunction(func) = val {
+                } else if let Atom::HostFunction(_func) = val {
                     /*let Some(func) = self.host_funcs.get(func) else {
                         return Err(EvalError::UnboundVariable(format!("builtin {func}")));
                     };

@@ -18,7 +18,7 @@ fn repl() {
         let mut src = String::new();
         stdin.read_line(&mut src).unwrap();
 
-        if src.len() == 0 {
+        if src.is_empty() {
             println!();
             break;
         }
