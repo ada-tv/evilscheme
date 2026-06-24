@@ -714,8 +714,77 @@ impl Evaluator {
                 }
             }
 
-            // TODO: (and) with short circuiting and falsey conversion
-            // TODO: (or) with short circuiting and falsey conversion
+            // (cond (bool any)... (else any)?)
+            Atom::List(list) if list[0] == Atom::Symbol("cond".into()) => {
+                if list.len() < 2 {
+                    return Err(EvalError::SyntaxError(
+                        "cond requires at least one condition branch",
+                    ));
+                }
+
+                let mut else_branch = Atom::Nil;
+
+                const LIST_ERROR: EvalError = EvalError::SyntaxError(
+                    "cond branches must be a list with a condition and value expression",
+                );
+
+                for branch in &list[1..] {
+                    let Atom::List(pair) = branch else {
+                        return Err(LIST_ERROR);
+                    };
+                    if pair.len() != 2 {
+                        return Err(LIST_ERROR);
+                    }
+
+                    if let Atom::Symbol(sym) = &pair[0]
+                        && sym == "else"
+                    {
+                        else_branch = pair[1].clone();
+                        continue;
+                    }
+
+                    let Atom::Bool(cond) = self.eval_inner(&pair[0], call_depth + 1)? else {
+                        return Err(EvalError::SyntaxError("cond branch condition must be bool"));
+                    };
+
+                    if cond {
+                        return self.eval_inner(&pair[1], call_depth + 1);
+                    }
+                }
+
+                self.eval_inner(&else_branch, call_depth + 1)
+            }
+
+            // (and any...)
+            Atom::List(list) if list[0] == Atom::Symbol("and".into()) => {
+                let mut value = Atom::Bool(true);
+
+                for arg in &list[1..] {
+                    value = self.eval_inner(arg, call_depth + 1)?;
+
+                    if let Atom::Bool(false) = value {
+                        return Ok(value);
+                    }
+                }
+
+                Ok(value)
+            }
+
+            // (or any...)
+            Atom::List(list) if list[0] == Atom::Symbol("or".into()) => {
+                let mut value = Atom::Bool(false);
+
+                for arg in &list[1..] {
+                    value = self.eval_inner(arg, call_depth + 1)?;
+
+                    match value {
+                        Atom::Bool(false) => {}
+                        x => return Ok(x),
+                    }
+                }
+
+                Ok(value)
+            }
 
             // scripted function calls
             Atom::List(list) if let Atom::Function(bindings, body) = &list[0] => {
@@ -776,9 +845,15 @@ impl Evaluator {
                 self.eval_inner(&Atom::List(parts), call_depth + 1)
             }
 
-            Atom::List(_) => Err(EvalError::TypeMismatch(
-                "non-executable list called as function",
-            )),
+            // FIXME: this happens on multi-line scripts, where it thinks the
+            // top-level expression is an attempted invalid function call
+            // and is directly returning the final unevaluated expression??
+            Atom::List(list) => {
+                println!("{:#?}", list);
+                Err(EvalError::TypeMismatch(
+                    "non-executable list called as function",
+                ))
+            }
 
             Atom::Symbol(sym) => {
                 if let Some(val) = self.get_in_scope(sym) {
