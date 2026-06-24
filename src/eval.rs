@@ -327,17 +327,61 @@ impl Evaluator {
                 self.eval(&args[0])
             }
 
+            "display" => {
+                if args.len() != 1 {
+                    return Err(EvalError::ArityMismatch {
+                        expected: 1,
+                        got: args.len(),
+                    });
+                }
+
+                print!("{}", args[0]);
+                Ok(Atom::Nil)
+            }
+
+            // FIXME: '("a b" c) writes (a b c)
+            "write" => {
+                if args.len() != 1 {
+                    return Err(EvalError::ArityMismatch {
+                        expected: 1,
+                        got: args.len(),
+                    });
+                }
+
+                if let Atom::String(arg) = &args[0] {
+                    print!("{:?}", arg);
+                } else if let Atom::HostFunction(func) = args[0] {
+                    for (name, atom) in &self.bindings[0] {
+                        match atom {
+                            Atom::HostFunction(bound_func) if *bound_func == func => {
+                                print!("{}", name)
+                            }
+                            _ => {}
+                        }
+                    }
+                } else {
+                    print!("{}", args[0]);
+                }
+
+                Ok(Atom::Nil)
+            }
+
+            "newline" => {
+                println!();
+                Ok(Atom::Nil)
+            }
+
             "print" => {
                 if args.is_empty() {
                     println!();
                     return Ok(Atom::Nil);
                 }
 
-                for value in &args[..args.len() - 1] {
-                    print!("{} ", value);
+                for arg in &args[..args.len() - 1] {
+                    print!("{} ", arg);
                 }
 
-                println!("{}", args.last().expect("empty args is checked"));
+                println!("{}", args.last().expect("at least one arg"));
 
                 Ok(Atom::Nil)
             }
@@ -724,20 +768,18 @@ impl Evaluator {
                     self.pop_scope();
 
                     result
-                } else if let Atom::HostFunction(_func) = val {
-                    /*let Some(func) = self.host_funcs.get(func) else {
-                        return Err(EvalError::UnboundVariable(format!("builtin {func}")));
-                    };
-
+                } else if let Atom::HostFunction(func) = val {
                     let mut args = Vec::new();
 
                     for arg in &list[1..] {
                         args.push(self.eval(arg)?);
                     }
 
-                    func(&args)*/
-
-                    todo!()
+                    if let Some(func) = self.host_funcs.get(func) {
+                        func(&args)
+                    } else {
+                        Err(EvalError::UnboundVariable(format!("builtin {func}")))
+                    }
                 } else {
                     Err(EvalError::UnboundVariable(sym.clone()))
                 }
