@@ -66,7 +66,7 @@ impl Evaluator {
         self.bindings[0].insert(name, Atom::HostFunction(idx));
     }
 
-    fn get_scoped_binding(&self, name: &str) -> Option<Atom> {
+    fn get_in_scope(&self, name: &str) -> Option<Atom> {
         for scope in self.bindings.iter().rev() {
             if let Some(var) = scope.get(name) {
                 return Some(var.clone());
@@ -76,7 +76,7 @@ impl Evaluator {
         None
     }
 
-    fn set_scoped_binding(&mut self, name: String, value: Atom) -> Result<(), EvalError> {
+    fn try_set_in_any_scope(&mut self, name: String, value: Atom) -> Result<(), EvalError> {
         for scope in self.bindings.iter_mut().rev() {
             if let Some(e) = scope.get_mut(&name) {
                 *e = value;
@@ -87,7 +87,7 @@ impl Evaluator {
         Err(EvalError::UnboundVariable(name))
     }
 
-    fn set_top_binding(&mut self, name: String, value: Atom) {
+    pub fn set_in_current_scope(&mut self, name: String, value: Atom) {
         self.bindings
             .last_mut()
             .expect("always at least one scope")
@@ -503,7 +503,7 @@ impl Evaluator {
 
                 if let Atom::Symbol(sym) = &list[1] {
                     let value = self.eval_inner(&list[2], call_depth + 1)?;
-                    self.set_scoped_binding(sym.clone(), value)?;
+                    self.try_set_in_any_scope(sym.clone(), value)?;
                     Ok(Atom::Nil)
                 } else {
                     Err(EvalError::SyntaxError("set! requires binding and value"))
@@ -519,7 +519,7 @@ impl Evaluator {
 
                 if let Atom::Symbol(sym) = &list[1] {
                     let value = self.eval_inner(&list[2], call_depth + 1)?;
-                    self.set_top_binding(sym.clone(), value);
+                    self.set_in_current_scope(sym.clone(), value);
 
                     Ok(Atom::Nil)
                 } else if let Atom::List(args) = &list[1] {
@@ -541,7 +541,7 @@ impl Evaluator {
 
                     let body = &list[2..];
 
-                    self.set_top_binding(
+                    self.set_in_current_scope(
                         name.clone(),
                         if body.len() == 1 {
                             Atom::Function(func_args, Box::new(body[0].clone()))
@@ -630,7 +630,7 @@ impl Evaluator {
                 self.push_scope();
 
                 for pair in evalled_bindings {
-                    self.set_top_binding(pair.0, pair.1);
+                    self.set_in_current_scope(pair.0, pair.1);
                 }
 
                 let result = self.eval_inner(&list[2], call_depth + 1);
@@ -681,7 +681,7 @@ impl Evaluator {
                         }
                     };
 
-                    self.set_top_binding(name.clone(), value);
+                    self.set_in_current_scope(name.clone(), value);
                 }
 
                 let result = self.eval_inner(&list[2], call_depth + 1);
@@ -732,7 +732,7 @@ impl Evaluator {
 
                 for (name, value) in std::iter::zip(bindings, args) {
                     let value = self.eval_inner(value, call_depth + 1)?;
-                    self.set_top_binding(name.clone(), value);
+                    self.set_in_current_scope(name.clone(), value);
                 }
 
                 let result = match self.eval_inner(body, call_depth + 1) {
@@ -781,7 +781,7 @@ impl Evaluator {
             )),
 
             Atom::Symbol(sym) => {
-                if let Some(val) = self.get_scoped_binding(sym) {
+                if let Some(val) = self.get_in_scope(sym) {
                     Ok(val.clone())
                 } else {
                     Err(EvalError::UnboundVariable(sym.clone()))
