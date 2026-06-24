@@ -140,21 +140,43 @@ fn repl() {
 }
 
 fn exec_file_once(file_path: &str) {
-    let atom = Atom::parse(&std::fs::read_to_string(file_path).unwrap()).unwrap();
+    let atom = match Atom::parse(&std::fs::read_to_string(file_path).unwrap()) {
+        Ok(atom) => atom,
+        Err(e) => {
+            eprintln!("Parse error: {e}");
+            return;
+        }
+    };
+
     let mut scope = Evaluator::new_empty();
     add_host_funcs(&mut scope);
 
-    println!("{}", scope.eval(&atom).unwrap());
+    match scope.eval(&atom) {
+        Ok(_) => {}
+        Err(e) => eprintln!("Eval error: {e}"),
+    }
 }
 
 fn exec_file_loop(file_path: &str) {
-    let atom = Atom::parse(&std::fs::read_to_string(file_path).unwrap()).unwrap();
+    let atom = match Atom::parse(&std::fs::read_to_string(file_path).unwrap()) {
+        Ok(atom) => atom,
+        Err(e) => {
+            eprintln!("Parse error: {e}");
+            return;
+        }
+    };
 
     let mut scope = Evaluator::new_empty();
     add_host_funcs(&mut scope);
 
     loop {
-        eprint!("\x1b[2K{}\r", scope.eval(&atom).unwrap());
+        match scope.eval(&atom) {
+            Ok(value) => eprint!("\x1b[2K{value}\r"),
+            Err(e) => {
+                eprintln!("Eval error: {e}");
+                return;
+            }
+        }
         std::thread::sleep(Duration::from_millis(50));
     }
 }
@@ -165,7 +187,7 @@ fn main() {
     if args.len() < 2 {
         repl();
     } else {
-        let file_path = args.last().expect(">= 1 cmdline argument");
+        let file_path = args.last().expect("at least one arg");
 
         if args.contains(&String::from("--loop")) {
             exec_file_loop(file_path);

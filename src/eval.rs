@@ -845,15 +845,9 @@ impl Evaluator {
                 self.eval_inner(&Atom::List(parts), call_depth + 1)
             }
 
-            // FIXME: this happens on multi-line scripts, where it thinks the
-            // top-level expression is an attempted invalid function call
-            // and is directly returning the final unevaluated expression??
-            Atom::List(list) => {
-                println!("{:#?}", list);
-                Err(EvalError::TypeMismatch(
-                    "non-executable list called as function",
-                ))
-            }
+            Atom::List(_) => Err(EvalError::TypeMismatch(
+                "non-executable list called as function",
+            )),
 
             Atom::Symbol(sym) => {
                 if let Some(val) = self.get_in_scope(sym) {
@@ -870,10 +864,16 @@ impl Evaluator {
     }
 
     pub fn eval(&mut self, atom: &Atom) -> Result<Atom, EvalError> {
-        match self.eval_inner(atom, 0) {
-            Ok(Atom::List(list)) if list.is_empty() => Ok(Atom::Nil),
-            Ok(Atom::List(list)) => Ok(list.last().expect("at least one element").clone()),
-            result => result,
+        if let Atom::List(list) = atom {
+            let mut value = Atom::Nil;
+
+            for atom in list {
+                value = self.eval_inner(atom, 0)?;
+            }
+
+            Ok(value)
+        } else {
+            self.eval_inner(atom, 0)
         }
     }
 }
