@@ -727,7 +727,21 @@ impl Evaluator {
                     self.set_top_binding(name.clone(), value);
                 }
 
-                let result = self.eval_inner(body, call_depth + 1);
+                let result = if let Atom::List(list) = &**body {
+                    let mut result = Ok(Atom::Nil);
+
+                    for expr in list {
+                        result = self.eval_inner(expr, call_depth + 1);
+
+                        if result.is_err() {
+                            break;
+                        }
+                    }
+
+                    result
+                } else {
+                    self.eval_inner(body, call_depth + 1)
+                };
 
                 self.pop_scope();
 
@@ -763,7 +777,21 @@ impl Evaluator {
                         self.set_top_binding(name, value);
                     }
 
-                    let result = self.eval_inner(&body, call_depth + 1);
+                    let result = if let Atom::List(list) = &*body {
+                        let mut result = Ok(Atom::Nil);
+
+                        for expr in list {
+                            result = self.eval_inner(expr, call_depth + 1);
+
+                            if result.is_err() {
+                                break;
+                            }
+                        }
+
+                        result
+                    } else {
+                        self.eval_inner(&body, call_depth + 1)
+                    };
 
                     self.pop_scope();
 
@@ -786,17 +814,17 @@ impl Evaluator {
             }
 
             Atom::List(list) if let Atom::List(_) = list[0] => {
-                let mut parts = vec![self.eval(&list[0])?];
+                let mut parts = vec![self.eval_inner(&list[0], call_depth + 1)?];
                 parts.extend_from_slice(&list[1..]);
 
-                self.eval(&Atom::List(parts))
+                self.eval_inner(&Atom::List(parts), call_depth + 1)
             }
 
             Atom::List(list) => {
                 let mut tmp = Vec::new();
 
                 for part in list {
-                    tmp.push(self.eval(part)?);
+                    tmp.push(self.eval_inner(part, call_depth + 1)?);
                 }
 
                 Ok(Atom::List(tmp))
@@ -824,7 +852,11 @@ impl Evaluator {
     }
 
     pub fn eval(&mut self, atom: &Atom) -> Result<Atom, EvalError> {
-        self.eval_inner(atom, 0)
+        match self.eval_inner(atom, 0) {
+            Ok(Atom::List(list)) if list.is_empty() => Ok(Atom::Nil),
+            Ok(Atom::List(list)) => Ok(list.last().expect("at least one element").clone()),
+            result => result,
+        }
     }
 }
 
