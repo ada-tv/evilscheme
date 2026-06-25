@@ -23,7 +23,7 @@ impl std::fmt::Display for EvalError {
             Self::OutOfBounds(n) => write!(f, "out of bounds list access at index {n}"),
             Self::TypeMismatch(msg) => f.write_str(msg),
             Self::SyntaxError(msg) => f.write_str(msg),
-            Self::TooDeep(_) => write!(f, "too many nested function calls"),
+            Self::TooDeep(_) => write!(f, "too many nested expressions ({})", Evaluator::MAX_DEPTH),
             Self::ArityMismatch { expected, got } => {
                 write!(f, "function arity mismatch, expected {expected}, got {got}")
             }
@@ -37,7 +37,7 @@ pub struct Evaluator {
 }
 
 impl Evaluator {
-    const MAX_CALL_DEPTH: usize = 8;
+    const MAX_DEPTH: usize = 64;
 
     pub fn new_empty() -> Self {
         Self::new(HashMap::new())
@@ -102,392 +102,8 @@ impl Evaluator {
         self.bindings.pop();
     }
 
-    /*fn builtin_func(&mut self, name: &str, args: &[Atom]) -> Result<Atom, EvalError> {
-        match name {
-            "+" => {
-                let mut accum = 0.0;
-
-                for arg in args {
-                    let Atom::Number(num) = arg else {
-                        return Err(EvalError::TypeMismatch("+ only works on numbers"));
-                    };
-
-                    accum += num;
-                }
-
-                Ok(Atom::Number(accum))
-            }
-
-            "-" => {
-                if args.is_empty() {
-                    return Err(EvalError::TypeMismatch("- requires at least one number"));
-                }
-
-                let Atom::Number(mut accum) = args[0] else {
-                    return Err(EvalError::TypeMismatch("- only works on numbers"));
-                };
-
-                if args.len() == 1 {
-                    Ok(Atom::Number(-accum))
-                } else {
-                    for arg in &args[1..] {
-                        let Atom::Number(num) = arg else {
-                            return Err(EvalError::TypeMismatch("- only works on numbers"));
-                        };
-
-                        accum -= num;
-                    }
-
-                    Ok(Atom::Number(accum))
-                }
-            }
-
-            "*" => {
-                let mut accum = 1.0;
-
-                for arg in args {
-                    let Atom::Number(num) = arg else {
-                        return Err(EvalError::TypeMismatch("* only works on numbers"));
-                    };
-
-                    accum *= num;
-                }
-
-                Ok(Atom::Number(accum))
-            }
-
-            "/" => {
-                if args.is_empty() {
-                    return Err(EvalError::TypeMismatch("/ requires at least one number"));
-                }
-
-                let Atom::Number(mut accum) = args[0] else {
-                    return Err(EvalError::TypeMismatch("/ only works on numbers"));
-                };
-
-                if args.len() == 1 {
-                    Ok(Atom::Number(1.0 / accum))
-                } else {
-                    for arg in &args[1..] {
-                        let Atom::Number(num) = arg else {
-                            return Err(EvalError::TypeMismatch("/ only works on numbers"));
-                        };
-
-                        accum /= num;
-                    }
-
-                    Ok(Atom::Number(accum))
-                }
-            }
-
-            "modulo" => {
-                if args.len() != 2 {
-                    return Err(EvalError::ArityMismatch {
-                        expected: 2,
-                        got: args.len(),
-                    });
-                }
-
-                let Atom::Number(lhs) = args[0] else {
-                    return Err(EvalError::TypeMismatch("remainder only works on numbers"));
-                };
-
-                let Atom::Number(rhs) = args[1] else {
-                    return Err(EvalError::TypeMismatch("remainder only works on numbers"));
-                };
-
-                Ok(Atom::Number(lhs.rem_euclid(rhs)))
-            }
-
-            "remainder" => {
-                if args.len() != 2 {
-                    return Err(EvalError::ArityMismatch {
-                        expected: 2,
-                        got: args.len(),
-                    });
-                }
-
-                let Atom::Number(lhs) = args[0] else {
-                    return Err(EvalError::TypeMismatch("remainder only works on numbers"));
-                };
-
-                let Atom::Number(rhs) = args[1] else {
-                    return Err(EvalError::TypeMismatch("remainder only works on numbers"));
-                };
-
-                Ok(Atom::Number(lhs % rhs))
-            }
-
-            "not" => {
-                if args.len() != 1 {
-                    return Err(EvalError::ArityMismatch {
-                        expected: 1,
-                        got: args.len(),
-                    });
-                }
-
-                if let Atom::Bool(false) = args[0] {
-                    Ok(Atom::Bool(true))
-                } else {
-                    Ok(Atom::Bool(false))
-                }
-            }
-
-            "null?" => {
-                if args.is_empty() {
-                    return Err(EvalError::TypeMismatch(
-                        "null? requires at least one argument",
-                    ));
-                }
-
-                if let Atom::Nil = args[0] {
-                    Ok(Atom::Bool(true))
-                } else {
-                    Ok(Atom::Bool(false))
-                }
-            }
-
-            "number?" => {
-                if args.is_empty() {
-                    return Err(EvalError::TypeMismatch(
-                        "number? requires at least one argument",
-                    ));
-                }
-
-                if let Atom::Number(_) = args[0] {
-                    Ok(Atom::Bool(true))
-                } else {
-                    Ok(Atom::Bool(false))
-                }
-            }
-
-            "string?" => {
-                if args.is_empty() {
-                    return Err(EvalError::TypeMismatch(
-                        "string? requires at least one argument",
-                    ));
-                }
-
-                if let Atom::String(_) = args[0] {
-                    Ok(Atom::Bool(true))
-                } else {
-                    Ok(Atom::Bool(false))
-                }
-            }
-
-            "nth" => {
-                if args.len() < 2 {
-                    return Err(EvalError::TypeMismatch("nth needs index and list"));
-                }
-
-                let Atom::Number(index) = args[0] else {
-                    return Err(EvalError::TypeMismatch("nth index must be number"));
-                };
-
-                let Atom::List(ref list) = args[1] else {
-                    return Err(EvalError::TypeMismatch("nth list must be list"));
-                };
-
-                if !index.is_finite() || index < 0.0 || index > usize::MAX as f64 {
-                    return Err(EvalError::OutOfBounds(index.floor() as usize));
-                }
-
-                let index = index.floor() as usize;
-
-                if let Some(elem) = list.get(index) {
-                    Ok(elem.clone())
-                } else {
-                    Err(EvalError::OutOfBounds(index))
-                }
-            }
-
-            "eval" => {
-                if args.len() != 1 {
-                    return Err(EvalError::ArityMismatch {
-                        expected: 1,
-                        got: args.len(),
-                    });
-                }
-
-                self.eval(&args[0])
-            }
-
-            "display" => {
-                if args.len() != 1 {
-                    return Err(EvalError::ArityMismatch {
-                        expected: 1,
-                        got: args.len(),
-                    });
-                }
-
-                print!("{}", args[0]);
-                Ok(Atom::Nil)
-            }
-
-            // FIXME: '("a b" c) writes (a b c)
-            "write" => {
-                if args.len() != 1 {
-                    return Err(EvalError::ArityMismatch {
-                        expected: 1,
-                        got: args.len(),
-                    });
-                }
-
-                if let Atom::String(arg) = &args[0] {
-                    print!("{:?}", arg);
-                } else if let Atom::HostFunction(func) = args[0] {
-                    for (name, atom) in &self.bindings[0] {
-                        match atom {
-                            Atom::HostFunction(bound_func) if *bound_func == func => {
-                                print!("{}", name)
-                            }
-                            _ => {}
-                        }
-                    }
-                } else {
-                    print!("{}", args[0]);
-                }
-
-                Ok(Atom::Nil)
-            }
-
-            "newline" => {
-                println!();
-                Ok(Atom::Nil)
-            }
-
-            "print" => {
-                if args.is_empty() {
-                    println!();
-                    return Ok(Atom::Nil);
-                }
-
-                for arg in &args[..args.len() - 1] {
-                    print!("{} ", arg);
-                }
-
-                println!("{}", args.last().expect("at least one arg"));
-
-                Ok(Atom::Nil)
-            }
-
-            "first" | "car" => {
-                if args.len() != 1 {
-                    return Err(EvalError::ArityMismatch {
-                        expected: 1,
-                        got: args.len(),
-                    });
-                }
-
-                let Atom::List(ref list) = args[0] else {
-                    return Err(EvalError::TypeMismatch("first needs list argument"));
-                };
-
-                Ok(list[0].clone())
-            }
-
-            "last" => {
-                if args.len() != 1 {
-                    return Err(EvalError::ArityMismatch {
-                        expected: 1,
-                        got: args.len(),
-                    });
-                }
-
-                let Atom::List(ref list) = args[0] else {
-                    return Err(EvalError::TypeMismatch("last needs list argument"));
-                };
-
-                Ok(list[list.len().saturating_sub(1)].clone())
-            }
-
-            "rest" | "cdr" => {
-                if args.len() != 1 {
-                    return Err(EvalError::ArityMismatch {
-                        expected: 1,
-                        got: args.len(),
-                    });
-                }
-
-                let Atom::List(ref list) = args[0] else {
-                    return Err(EvalError::TypeMismatch("rest needs list argument"));
-                };
-
-                Ok(Atom::List(list[1..].to_vec()))
-            }
-
-            "list" => {
-                let mut parts = Vec::new();
-
-                for part in args {
-                    parts.push(self.eval(part)?);
-                }
-
-                Ok(Atom::List(parts))
-            }
-
-            "sin" => {
-                let Ok(val) = Self::apply_number_op(args, |n| n.sin()) else {
-                    return Err(EvalError::TypeMismatch("sin only works on numbers"));
-                };
-
-                Ok(val)
-            }
-
-            "cos" => {
-                let Ok(val) = Self::apply_number_op(args, |n| n.cos()) else {
-                    return Err(EvalError::TypeMismatch("cos only works on numbers"));
-                };
-
-                Ok(val)
-            }
-
-            "sqrt" => {
-                let Ok(val) = Self::apply_number_op(args, |n| n.sqrt()) else {
-                    return Err(EvalError::TypeMismatch("sqrt only works on numbers"));
-                };
-
-                Ok(val)
-            }
-
-            "round" => {
-                let Ok(val) = Self::apply_number_op(args, |n| n.round()) else {
-                    return Err(EvalError::TypeMismatch("round only works on numbers"));
-                };
-
-                Ok(val)
-            }
-
-            "ceil" => {
-                let Ok(val) = Self::apply_number_op(args, |n| n.ceil()) else {
-                    return Err(EvalError::TypeMismatch("ceil only works on numbers"));
-                };
-
-                Ok(val)
-            }
-
-            "floor" => {
-                let Ok(val) = Self::apply_number_op(args, |n| n.floor()) else {
-                    return Err(EvalError::TypeMismatch("floor only works on numbers"));
-                };
-
-                Ok(val)
-            }
-
-            "trunc" => {
-                let Ok(val) = Self::apply_number_op(args, |n| n.trunc()) else {
-                    return Err(EvalError::TypeMismatch("trunc only works on numbers"));
-                };
-
-                Ok(val)
-            }
-
-            _ => Err(EvalError::UnboundVariable(name.into())),
-        }
-    }*/
-
     fn eval_inner(&mut self, atom: &Atom, call_depth: usize) -> Result<Atom, EvalError> {
-        if call_depth >= Self::MAX_CALL_DEPTH {
+        if call_depth >= Self::MAX_DEPTH {
             return Err(EvalError::TooDeep(call_depth));
         }
 
@@ -845,9 +461,16 @@ impl Evaluator {
                 self.eval_inner(&Atom::List(parts), call_depth + 1)
             }
 
-            Atom::List(_) => Err(EvalError::TypeMismatch(
-                "non-executable list called as function",
-            )),
+            // FIXME: this also feels wrong
+            Atom::List(list) => {
+                let mut value = Atom::Nil;
+
+                for atom in list {
+                    value = self.eval_inner(atom, call_depth + 1)?;
+                }
+
+                Ok(value)
+            }
 
             Atom::Symbol(sym) => {
                 if let Some(val) = self.get_in_scope(sym) {
@@ -864,17 +487,7 @@ impl Evaluator {
     }
 
     pub fn eval(&mut self, atom: &Atom) -> Result<Atom, EvalError> {
-        if let Atom::List(list) = atom {
-            let mut value = Atom::Nil;
-
-            for atom in list {
-                value = self.eval_inner(atom, 0)?;
-            }
-
-            Ok(value)
-        } else {
-            self.eval_inner(atom, 0)
-        }
+        self.eval_inner(atom, 0)
     }
 }
 

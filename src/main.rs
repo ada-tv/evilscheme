@@ -152,7 +152,8 @@ fn exec_file_once(file_path: &str) {
     add_host_funcs(&mut scope);
 
     match scope.eval(&atom) {
-        Ok(_) => {}
+        Ok(Atom::Nil) => {}
+        Ok(atom) => println!("{atom}"),
         Err(e) => eprintln!("Eval error: {e}"),
     }
 }
