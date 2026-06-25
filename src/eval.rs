@@ -14,6 +14,7 @@ pub enum EvalError {
     SyntaxError(&'static str),
     TooDeep(usize),
     ArityMismatch { expected: usize, got: usize },
+    Custom(String),
 }
 
 impl std::fmt::Display for EvalError {
@@ -27,6 +28,7 @@ impl std::fmt::Display for EvalError {
             Self::ArityMismatch { expected, got } => {
                 write!(f, "function arity mismatch, expected {expected}, got {got}")
             }
+            Self::Custom(msg) => f.write_str(msg),
         }
     }
 }
@@ -809,6 +811,132 @@ const BUILTINS: &[(&str, fn(&[Atom]) -> Result<Atom, EvalError>)] = &[
         } else {
             Ok(Atom::Bool(false))
         }
+    }),
+    ("car", |args| {
+        if args.len() != 1 {
+            return Err(EvalError::ArityMismatch {
+                expected: 1,
+                got: args.len(),
+            });
+        }
+
+        let Atom::List(ref lhs) = args[0] else {
+            return Err(EvalError::TypeMismatch("car takes list"));
+        };
+
+        if let Some(item) = lhs.get(0) {
+            Ok(item.clone())
+        } else {
+            Ok(Atom::Nil)
+        }
+    }),
+    ("cdr", |args| {
+        if args.len() != 1 {
+            return Err(EvalError::ArityMismatch {
+                expected: 1,
+                got: args.len(),
+            });
+        }
+
+        let Atom::List(ref lhs) = args[0] else {
+            return Err(EvalError::TypeMismatch("cdr takes list"));
+        };
+
+        if lhs.len() < 2 {
+            return Ok(Atom::Nil);
+        }
+
+        Ok(Atom::List(lhs[1..].to_vec()))
+    }),
+    ("append", |args| {
+        if args.len() < 2 {
+            return Err(EvalError::ArityMismatch {
+                expected: 2,
+                got: args.len(),
+            });
+        }
+
+        if let Atom::Nil = args[0] {
+            let mut tmp = Vec::new();
+
+            for arg in &args[1..] {
+                tmp.push(arg.clone());
+            }
+
+            Ok(Atom::List(tmp))
+        } else {
+            let Atom::List(ref list) = args[0] else {
+                return Err(EvalError::TypeMismatch("first argument of append is list"));
+            };
+
+            let mut tmp = list.clone();
+
+            for arg in &args[1..] {
+                tmp.push(arg.clone());
+            }
+
+            Ok(Atom::List(tmp))
+        }
+    }),
+    ("list-ref", |args| {
+        if args.len() != 2 {
+            return Err(EvalError::ArityMismatch {
+                expected: 2,
+                got: args.len(),
+            });
+        }
+
+        let Atom::List(ref list) = args[0] else {
+            return Err(EvalError::TypeMismatch(
+                "first argument of list-ref is list",
+            ));
+        };
+
+        let Atom::Number(index) = args[1] else {
+            return Err(EvalError::TypeMismatch(
+                "second argument of list-ref is number",
+            ));
+        };
+
+        if index < 0.0 || index > usize::MAX as f64 || !index.is_finite() {
+            return Err(EvalError::TypeMismatch("index must be positive integer"));
+        }
+
+        let index = index as usize;
+
+        if let Some(atom) = list.get(index as usize) {
+            Ok(atom.clone())
+        } else {
+            Err(EvalError::OutOfBounds(index))
+        }
+    }),
+    ("length", |args| {
+        if args.len() != 1 {
+            return Err(EvalError::ArityMismatch {
+                expected: 1,
+                got: args.len(),
+            });
+        }
+
+        let Atom::List(ref list) = args[0] else {
+            return Err(EvalError::TypeMismatch("argument of length is list"));
+        };
+
+        Ok(Atom::Number(list.len() as f64))
+    }),
+    ("error", |args| {
+        if args.len() != 1 {
+            return Err(EvalError::ArityMismatch {
+                expected: 1,
+                got: args.len(),
+            });
+        }
+
+        let Atom::String(ref msg) = args[0] else {
+            return Err(EvalError::TypeMismatch("error takes string"));
+        };
+
+        Err(EvalError::Custom(msg.clone()))
     }),
 ];
 
