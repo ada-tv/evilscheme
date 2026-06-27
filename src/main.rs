@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant, SystemTime};
 
-use evilscheme::{Atom, EvalError, Evaluator};
+use evilscheme::{Atom, EvalError, Scope};
 
-fn add_host_funcs(scope: &mut Evaluator) {
+fn add_host_funcs(scope: &mut Scope) {
     let start_time = Instant::now();
 
     scope.bind_host_func(
@@ -111,7 +111,7 @@ fn repl() {
     println!("\x1b[92m;; Evil Scheme REPL\x1b[0m");
 
     let stdin = std::io::stdin();
-    let mut scope = Evaluator::new_empty();
+    let mut scope = Scope::new_empty();
     add_host_funcs(&mut scope);
 
     loop {
@@ -148,7 +148,7 @@ fn exec_file_once(file_path: &str) {
         }
     };
 
-    let mut scope = Evaluator::new_empty();
+    let mut scope = Scope::new_empty();
     add_host_funcs(&mut scope);
 
     match scope.eval(&atom) {
@@ -167,7 +167,7 @@ fn exec_file_loop(file_path: &str) {
         }
     };
 
-    let mut scope = Evaluator::new_empty();
+    let mut scope = Scope::new_empty();
     add_host_funcs(&mut scope);
 
     loop {

@@ -24,7 +24,7 @@ impl std::fmt::Display for EvalError {
             Self::OutOfBounds(n) => write!(f, "out of bounds list access at index {n}"),
             Self::TypeMismatch(msg) => f.write_str(msg),
             Self::SyntaxError(msg) => f.write_str(msg),
-            Self::TooDeep(_) => write!(f, "too many nested expressions ({})", Evaluator::MAX_DEPTH),
+            Self::TooDeep(_) => write!(f, "too many nested expressions ({})", Scope::MAX_DEPTH),
             Self::ArityMismatch { expected, got } => {
                 write!(f, "function arity mismatch, expected {expected}, got {got}")
             }
@@ -33,12 +33,12 @@ impl std::fmt::Display for EvalError {
     }
 }
 
-pub struct Evaluator {
+pub struct Scope {
     bindings: Vec<HashMap<String, Atom>>,
     host_funcs: Vec<HostFunction>,
 }
 
-impl Evaluator {
+impl Scope {
     const MAX_DEPTH: usize = 64;
 
     pub fn new_empty() -> Self {
@@ -948,7 +948,7 @@ mod tests {
     fn lambda() {
         const TEST_SRC: &str = "(define square (lambda (a) (* a a))) (square 4)";
         let atom = Atom::parse(TEST_SRC).unwrap();
-        let mut evaluator = Evaluator::new_empty();
+        let mut evaluator = Scope::new_empty();
         assert_eq!(
             evaluator.eval(&atom),
             Ok(Atom::List(vec![Atom::Nil, Atom::Number(16.0)]))
